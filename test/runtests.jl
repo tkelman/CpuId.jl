@@ -38,5 +38,6 @@ using Base.Test
     @test isa( cpucycle_id()          , Tuple{UInt64,UInt64} )
 
     println(cpuinfo())
+    println(cpufeaturetable())
 
 end

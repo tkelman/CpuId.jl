@@ -9,7 +9,8 @@ export cpuvendor, cpubrand, cpumodel, cachesize, cachelinesize,
        simdbytes, simdbits, address_size, physical_address_size,
        cpu_base_frequency, cpu_max_frequency, cpu_bus_frequency,
        has_cpu_frequencies, hypervised, hvvendor, cpucycle,
-       cpucycle_id, cpuinfo
+       cpucycle_id, cpuinfo, cpufeature, cpufeatures, cpufeaturedesc,
+       cpufeaturetable
 
 
 """
@@ -462,6 +463,9 @@ function cpuinfo()
 |              | $(CpuId.cpu_bus_frequency()) MHz bus frequency     | " : "") *
 "\n| Hypervisor   |" * (CpuId.hypervised() ?  " Yes, $(CpuId.hvvendor()) " : " No ") * " |")
 end
+
+# CPU feature detection
+include("cpufeature.jl")
 
 
 end # module CpuId
