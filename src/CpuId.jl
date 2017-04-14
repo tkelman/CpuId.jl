@@ -74,7 +74,9 @@ Hint: This function is extremely efficient when inlined into your own code.
       The result is the actual CPU clock cycles spent, independent of the
       current (and possible non-constant) CPU clock frequency.
 """
-@inline cpucycle() =
+function cpucycle end
+
+@inline __cpucycle() =
     llvmcall("""
         %1 = tail call { i32, i32 } asm sideeffect "rdtsc", "={ax},={dx},~{dirflag},~{fpsr},~{flags}"() #2
         %2 = extractvalue { i32, i32 } %1, 0
@@ -97,7 +99,9 @@ an instruction that also allows to detect if the code has been moved to a
 different executing CPU.  See also the comments for `cpucycle()` which equally
 apply.
 """
-@inline cpucycle_id() =
+function cpucycle_id end
+
+@inline __cpucycle_id() =
     llvmcall("""
         %1 = tail call { i64, i64, i64 } asm sideeffect "rdtscp", "={ax},={dx},={cx},~{dirflag},~{fpsr},~{flags}"() #2
         %2 = extractvalue { i64, i64, i64 } %1, 0
@@ -461,11 +465,31 @@ function cpuinfo()
     ( has_cpu_frequencies() ?
 "\n| Clock Freq.  | $(CpuId.cpu_base_frequency()) / $(CpuId.cpu_max_frequency()) MHz (base/max) |
 |              | $(CpuId.cpu_bus_frequency()) MHz bus frequency     | " : "") *
+"\n| TSC       | Priviledged access to time stamp counter: " * (cpufeature(:RDTSCP) ? " Yes " : " No ")* " |" *
 "\n| Hypervisor   |" * (CpuId.hypervised() ?  " Yes, $(CpuId.hvvendor()) " : " No ") * " |")
 end
 
 # CPU feature detection
 include("cpufeature.jl")
+
+"""
+Enables and disables a few functions depending on whether the features are
+actually available.  This should overcome a potential efficiency issue when
+calling those functions in a hot zone.
+"""
+function __init__()
+    # Do we have priviledged access to `rdtsc` instructions?
+    if (cpufeature(:TSC))
+        eval(:(cpucycle()    = __cpucycle()))
+    else
+        eval(:(cpucycle()    = zero(UInt64)))
+    end
+    if (cpufeature(:RDTSCP))
+        eval(:(cpucycle_id() = __cpucycle_id()))
+    else
+        eval(:(cpucycle_id() = (zero(UInt64,zero(UInt32)))))
+    end
+end
 
 
 end # module CpuId
