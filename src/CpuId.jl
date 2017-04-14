@@ -194,7 +194,7 @@ const _cpuid_vendor_id = Dict(
     "VIA VIA VIA " => :VIA,
     "Vortex86 SoC" => :Vortex,
     # Hypervisors
-    "KVMKVMKVM"    => :KVM,
+    "KVMKVMKVM\0\0\0" => :KVM,   # KVM actually appends null characters...
     "Microsoft Hv" => :Microsoft,
     "prl hyperv  " => :Parallels,
     "VMwareVMware" => :VMware,

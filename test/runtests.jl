@@ -46,4 +46,9 @@ using Base.Test
     @test isa( cpucycle()             , UInt64 )
     @test isa( cpucycle_id()          , Tuple{UInt64,UInt64} )
 
+    # Check if trailing null characters are correctly identified
+    # as hypervisor vendor KVM
+    @test get( CpuId._cpuid_vendor_id, "KVMKVMKVM\0\0\0", :Unknown) === :KVM
+
+
 end
