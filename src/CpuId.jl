@@ -8,9 +8,9 @@ module CpuId
 export cpuvendor, cpubrand, cpumodel, cachesize, cachelinesize,
        simdbytes, simdbits, address_size, physical_address_size,
        cpu_base_frequency, cpu_max_frequency, cpu_bus_frequency,
-       has_cpu_frequencies, hypervised, hvvendor, cpucycle,
-       cpucycle_id, cpuinfo, cpufeature, cpufeatures, cpufeaturedesc,
-       cpufeaturetable
+       has_cpu_frequencies, hyperthreading, hypervised, hvvendor,
+       cpucycle, cpucycle_id, cpuinfo, cpufeature, cpufeatures,
+       cpufeaturedesc, cpufeaturetable, cpuarchitecture
 
 
 """
@@ -137,6 +137,33 @@ function cpumodel()
         , :Stepping  =>  Int(eax & 0x0000_000F)
         , :CpuType   =>  Int(eax & 0x0000_3000 >> 12))
 end
+
+"""
+    hyperthreading()
+
+Check whether the CPU reports to be hyperthreading-capable. Hyperthreading
+means that two logical cores are assigned to each physical core and share the
+same physical hardware.  However, a positive or negative answer does not
+necessarily point towards hyperthreading actually being enabled or disabled.
+
+If the code runs in a hypervisor, this function should not be trusted if it
+does not give a positive answer since the hypervisor is free to choose what to
+report.  Also, if the CPU is hyperthreading-capable, hyperthreading might
+still be turned off via the operating system.  Finally, some CPUs, such as my
+Xeon, report being hyperthreading-capable, but are not according to specs.
+
+Tip: In case this function returns true, or a call to `hypervised()` returns
+true, one should assume hyperthreading to be active, unless disproven
+otherwise.  Hence, `if hypervised() || hyperthreading()` then better occupy
+only half the reported cores to avoid bad surprises.  On the other hand, if
+neither a hypervisor is detected, nor hyperthreading, then there is most
+likely no hyperthreading.
+"""
+function hyperthreading() ::Bool
+    eax, ebx, ecx, edx = cpuid(0x01)
+    ((edx >> 28) & one(UInt32)) != zero(UInt32)
+end
+
 
 """
     hypervised()
@@ -457,6 +484,7 @@ function cpuinfo()
 |:-------------|:---------------------------------------------------|
 | Brand        | $(CpuId.cpubrand())                                |
 | Vendor       | $(CpuId.cpuvendor())                               |
+| Architecture | $(CpuId.cpuarchitecture())                         |
 | Model        | $(CpuId.cpumodel())                                |
 | Address Size | $(CpuId.address_size()) bits virtual, $(CpuId.physical_address_size()) bits physical |
 | SIMD         | max. vector size: $(CpuId.simdbytes()) bytes = $(CpuId.simdbits()) bits    |
@@ -466,11 +494,52 @@ function cpuinfo()
 "\n| Clock Freq.  | $(CpuId.cpu_base_frequency()) / $(CpuId.cpu_max_frequency()) MHz (base/max) |
 |              | $(CpuId.cpu_bus_frequency()) MHz bus frequency     | " : "") *
 "\n| TSC       | Priviledged access to time stamp counter: " * (cpufeature(:RDTSCP) ? " Yes " : " No ")* " |" *
-"\n| Hypervisor   |" * (CpuId.hypervised() ?  " Yes, $(CpuId.hvvendor()) " : " No ") * " |")
+"\n| Hypervisor     |" * (CpuId.hypervised() ?  " Yes, $(CpuId.hvvendor()) " : " No ") * " |" *
+"\n| Hyperthreading |" * (CpuId.hyperthreading() ?  " Yes" : " No ") * " |")
 end
 
 # CPU feature detection
 include("cpufeature.jl")
+
+"""
+    cpuarchitecture()
+
+This function tries to infer the CPU microarchitecture with a call to the
+`cpuid` instruction.  For now, only Intel CPUs are suppored according to the
+following table.
+
+The following table is taken from []():
+Table C-1. CPUID Signature Values of Of Recent Intel Microarchitectures
+
+| Family_Model                     | Microarchitecture   |
+| :------------------------------- | :------------------ |
+| 06_4EH, 06_5EH                   | Skylake             |
+| 06_3DH, 06_47H, 06_56H           | Broadwell           |
+| 06_3CH, 06_45H, 06_46H, 06_3FH   | Haswell             |
+| 06_3AH, 06_3EH                   | Ivy Bridge          |
+| 06_2AH, 06_2DH                   | Sandy Bridge        |
+| 06_25H, 06_2CH, 06_2FH           | Westmere            |
+| 06_1AH, 06_1EH, 06_1FH, 06_2EH   | Nehalem             |
+| 06_17H, 06_1DH                   | Enhanced Intel Core |
+| 06_0FH                           | Intel Core          |
+
+Xeon Phi: Family is possibly 0x0b ?
+"""
+function cpuarchitecture() ::Symbol
+    cpumod = cpumodel()
+    cpumod[:Family] != 0x06 && return :UnknownNonIntel  # Intel's family is all 0x06's
+
+    model = cpumod[:Model]
+    (model == 0x4e || model == 0x5e) ? :Skylake :
+    (model == 0x3d || model == 0x47 || model == 0x56) ? :Broadwell :
+    (model == 0x3c || model == 0x45 || model == 0x46 || model == 0x3f) ?  :Haswell :
+    (model == 0x3a || model == 0x3e) ? :IvyBridge :
+    (model == 0x2a || model == 0x2d) ? :SandyBridge :
+    (model == 0x25 || model == 0x2c || model == 0x2f) ? :Westmere :
+    (model == 0x1a || model == 0x1e || model == 0x1f || model == 0x2e) ?  :Nehalem :
+    (model == 0x17 || model == 0x1d) ?  :EnhancedIntelCore :
+    (model == 0x0f || model == 0x1d) ?  :IntelCore : :UnknownIntel
+end
 
 """
 Enables and disables a few functions depending on whether the features are
@@ -487,7 +556,7 @@ function __init__()
     if (cpufeature(:RDTSCP))
         eval(:(cpucycle_id() = __cpucycle_id()))
     else
-        eval(:(cpucycle_id() = (zero(UInt64,zero(UInt32)))))
+        eval(:(cpucycle_id() = (zero(UInt64),zero(UInt64))))
     end
 end
 

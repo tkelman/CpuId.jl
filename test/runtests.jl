@@ -27,12 +27,17 @@ using Base.Test
     @test isa( CpuId.cpuid(eax=0x00, ecx=0x00, edx=0x00), NTuple{4, UInt32} )
     @test isa( CpuId.cpuid(eax=0x00, ebx=0x00, ecx=0x00, edx=0x00), NTuple{4, UInt32} )
 
+    @test isa( CpuId.cpucycle()       , UInt64 )
+    @test isa( CpuId.cpucycle_id()    , Tuple{UInt64, UInt64} )
+
     @test isa( address_size()         , Integer )
     @test isa( cachelinesize()        , Integer )
     @test isa( cachesize()            , Tuple )
+    @test isa( cpuarchitecture()      , Symbol )
     @test isa( cpubrand()             , String )
     @test isa( cpumodel()             , Dict )
     @test isa( cpuvendor()            , Symbol )
+    @test isa( hyperthreading()       , Bool )
     @test isa( hypervised()           , Bool )
     @test isa( physical_address_size(), Integer )
     @test isa( simdbits()             , Integer )
@@ -42,6 +47,7 @@ using Base.Test
     @test isa( cpu_bus_frequency()    , Integer )
     @test isa( cpu_max_frequency()    , Integer )
     @test isa( cpuinfo()              , Base.Markdown.MD )
+    @test isa( cpufeaturetable()      , Base.Markdown.MD )
 
     @test isa( cpucycle()             , UInt64 )
     @test isa( cpucycle_id()          , Tuple{UInt64,UInt64} )

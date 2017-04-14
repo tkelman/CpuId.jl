@@ -28,42 +28,51 @@ However, the `cpuid` instruction should be perfectly portable and efficient.
 
 ## Installation and Usage
 
-*CpuId* is a registered Julia package; Clone the repository from the REPL:
+*CpuId* is a registered Julia package. Use Julia's package manager as usual:
 
     Julia> Pkg.add("CpuId")
 
-Or, if you're keen to get some intermediate updates, clone from GitHub master
+Or, if you're keen to get some intermediate updates, clone from GitHub *master*
 branch:
 
     Julia> Pkg.clone("https://github.com/m-j-w/CpuId.jl")
+
+The really brave may want to switch to the *experimental* branch where
+development takes place.
 
 
 ## Features
 
 See the diagnostic summary by typing
 
-    julia> using CpuId
-    julia> cpuinfo()
+```
+julia> using CpuId
+julia> cpuinfo()
 
-       Cpuid Property   Value
-      ╾───────────────╌─────────────────────────────────────────────────────╼
-       Brand            Intel(R) Xeon(R) CPU E3-1225 v5 @ 3.30GHz
-       Vendor           Intel
-       Model            Dict(:Family=>6,:Stepping=>3,:CpuType=>0,:Model=>94)
-       Clock Freq.      3300 / 3700 MHz (base/max)
-                        100 MHz bus frequency
-       Address Size     48 bits virtual, 39 bits physical
-       SIMD             max. vector size: 32 bytes = 256 bits
-       Data cache       level 1:3 : (32, 256, 8192) kbytes
-                        64 byte cache line size
-       Hypervised       No
+    Cpuid Property   Value
+    ╾───────────────╌─────────────────────────────────────────────────────╼
+    Brand            Intel(R) Xeon(R) CPU E3-1225 v5 @ 3.30GHz
+    Vendor           Intel
+    Model            Dict(:Family=>6,:Stepping=>3,:CpuType=>0,:Model=>94)
+    Architecture     Skylake
+    Address Size     48 bits virtual, 39 bits physical
+    SIMD             max. vector size: 32 bytes = 256 bits
+    Data cache       level 1:3 : (32, 256, 8192) kbytes
+                     64 byte cache line size
+    Clock Freq.      3300 / 3700 MHz (base/max)
+                     100 MHz bus frequency
+    TSC              Priviledged access to time stamp counter: Yes
+    Hypervisor       No
+    Hyperthreading   Yes
+```
 
-
-This initial release covers a selection of basic functionality:
+This release covers a selection of primarily basic functionality:
 
  - `cpuinfo()` generates the summary shown above (markdown string).
  - `cpubrand()`, `cpumodel()`, `cpuvendor()` allow the identification of the
      CPU.
+ - `cpuarchitecture()` tries to infer the microarchitecture, currently only of
+     Intel CPUs.
  - `cpucycle()` and `cpucycle_id()` let you directly get the CPU's time stamp
      counter, which is increased for every CPU clock cycle. Lowest overhead for
      benchmarking, though, technically, this uses the `rdtsc` and `rdtscp`
@@ -79,8 +88,33 @@ This initial release covers a selection of basic functionality:
  - `hypervised()` returns true when the CPU indicates that a hypervisor is
      running the operating system, aka a virtual machine.  In that case,
      `hvvendor()` may be invoked to get the, well, hypervisor vendor.
+ - `hyperthreading()` checks whether there _might_ be more logical than physical
+     cores available.
  - `simdbits()` and `simdbytes()` return the size of the largest SIMD register
      available on the executing CPU.
+ - `cpufeature(::Symbol)` permits asking for the availability of a specific
+     feature, and `cpufeaturetable()` gives a complete overview of all detected
+     features, as shown below.
+
+```
+julia> cpufeaturetable()
+
+    Cpuid Flag   Feature Description
+    ╾───────────╌─────────────────────────────────────────────────────────────╼
+    3DNowP       3D Now PREFETCH and PREFETCHW instructions
+    ACPI         Onboard thermal control MSRs for ACPI
+    ADX          Intel ADX (Multi-Precision Add-Carry Instruction Extensions)
+    AES          AES encryption instruction set
+    AHF64        LAHF and SAHF in PM64
+    APIC         Onboard advanced programmable interrupt controller
+    AVX          256bit Advanced Vector Extensions, AVX
+    AVX2         SIMD 256bit Advanced Vector Extensions 2
+    BMI1         Bit Manipulation Instruction Set 1
+    BMI2         Bit Manipulation Instruction Set 2
+    CLFLUSH      CLFLUSHOPT Instructions
+    CLFSH        CLFLUSH instruction (SSE2)
+    ...
+```
 
 
 ## Limitations
