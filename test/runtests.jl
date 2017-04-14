@@ -8,6 +8,11 @@ using Base.Test
     println(cpuinfo())
     println(cpufeaturetable())
 
+    println("Query hypervisor information:")
+    for r in 0x4000_0000:0x4000_0006
+        println("0x", hex(r), " : ", CpuId.cpuid(r))
+    end
+
     # Can't do real testing on results when target machine is unknown.
     # Thus, let's simply check whether the result types are correct,
     # which also fails if a test throws.

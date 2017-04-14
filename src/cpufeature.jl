@@ -157,7 +157,7 @@ const __cpufeaturemap = Dict{Symbol, Tuple{UInt32, Symbol, UInt32, String}}(
     :CX8_          => (0x8000_0001, :EDX , 8  , "CMPXCHG8B"),
     :APIC_         => (0x8000_0001, :EDX , 9  , "APIC"),
      #:reserved    => (0x8000_0001, :EDX , 10 , ""),
-    :SYSCALL_      => (0x8000_0001, :EDX , 11 , "SYSCALL and SYSRET"),
+    :SYSCALL       => (0x8000_0001, :EDX , 11 , "SYSCALL and SYSRET"),
     :MTRR_         => (0x8000_0001, :EDX , 12 , "MTRR (MSR)"),
     :PGE_          => (0x8000_0001, :EDX , 13 , "PDE and PTE"),
     :MCA_          => (0x8000_0001, :EDX , 14 , "MCA"),
@@ -191,6 +191,9 @@ const __cpufeaturemap = Dict{Symbol, Tuple{UInt32, Symbol, UInt32, String}}(
     :EFRO          => (0x8000_0007, :EDX , 10 , "Read-only MPERF/APERF"),
     :PFI           => (0x8000_0007, :EDX , 11 , "Processor feedback interface"),
     :PA            => (0x8000_0007, :EDX , 12 , "Processor accumulator"),
+    :FP128         => (0x8000_001a, :EAX , 0  , "1x128 bit instead of 2x 64-bit processing (true SSE)"),
+    :MOVU          => (0x8000_001a, :EAX , 1  , "prefer unaligned MOV over MOVL/MOVH"),
+    :FP256         => (0x8000_001a, :EAX , 2  , "1x256 bit instead of 2x128-bit processing (true AVX)"),
 )
 
 
