@@ -4,6 +4,10 @@ using Base.Test
 
     using CpuId
 
+    # Moved upwards temporarily for better diagnostics
+    println(cpuinfo())
+    println(cpufeaturetable())
+
     # Can't do real testing on results when target machine is unknown.
     # Thus, let's simply check whether the result types are correct,
     # which also fails if a test throws.
@@ -36,8 +40,5 @@ using Base.Test
 
     @test isa( cpucycle()             , UInt64 )
     @test isa( cpucycle_id()          , Tuple{UInt64,UInt64} )
-
-    println(cpuinfo())
-    println(cpufeaturetable())
 
 end
