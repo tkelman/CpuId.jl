@@ -28,7 +28,12 @@ However, the `cpuid` instruction should be perfectly portable and efficient.
 
 ## Installation and Usage
 
-*CpuId* is not yet a registered package. Clone the repository from the REPL:
+*CpuId* is a registered Julia package; Clone the repository from the REPL:
+
+    Julia> Pkg.add("CpuId")
+
+Or, if you're keen to get some intermediate updates, clone from GitHub master
+branch:
 
     Julia> Pkg.clone("https://github.com/m-j-w/CpuId.jl")
 
@@ -56,8 +61,13 @@ See the diagnostic summary by typing
 
 This initial release covers a selection of basic functionality:
 
+ - `cpuinfo()` generates the summary shown above (markdown string).
  - `cpubrand()`, `cpumodel()`, `cpuvendor()` allow the identification of the
      CPU.
+ - `cpucycle()` and `cpucycle_id()` let you directly get the CPU's time stamp
+     counter, which is increased for every CPU clock cycle. Lowest overhead for
+     benchmarking, though, technically, this uses the `rdtsc` and `rdtscp`
+     instructions rather than `cpuid`.
  - `address_size()` and `physical_address_size()` return the number of bits used
      in pointers.  Useful when stealing a few bits from a pointer.
  - `cachelinesize()` gives the size in bytes of one cache line, which is
@@ -71,12 +81,13 @@ This initial release covers a selection of basic functionality:
      `hvvendor()` may be invoked to get the, well, hypervisor vendor.
  - `simdbits()` and `simdbytes()` return the size of the largest SIMD register
      available on the executing CPU.
- - `cpuinfo()` generates the summary shown above (markdown string).
 
 
 ## Limitations
 
-The behaviour on non-Intel CPUs is unknown; a crash of Julia is likely.
+The behaviour on non-Intel CPUs is currently unknown; though technically a crash
+of Julia should be expected, theoretically, a rather large list of CPUs support
+the `cpuid` instruction. Tip: Just try it and report back.
 
 There are plenty of different CPUs, and in particular the `cpuid` instruction
 has numerous corner cases, which this package does not address, yet.  In systems
@@ -84,12 +95,30 @@ having multiple processor packets (independent sockets holding a processor), the
 `cpuid` instruction may give only information with respect to the current
 physical and logical core that is executing the program code.
 
+#### Specific limitations
+
+- Why aren't all infos available that are seen e.g. in `/proc/cpuinfo`?
+    Many of those features, flags and properties reside in the so called machine
+    specific registers (MSR), which are only accessible to priviledged programs
+    running in the so called *Ring0*, such as the Linux kernel itself. Thus,
+    short answer: We don't get it...
+
+- My hypervisor is not detected!
+    Yeah, well, hypervisor vendors are free to provide the `cpuid` information
+    by intercepting calls to that instruction.  Not all vendors comply, and some
+    even permit the user to change what is reported.  A non-reporting example
+    is said to be VirtualBox.
+
+- But `rdtsc`/`rdtscp` are not `cpuid`!
+    True, but who cares. Both are valuable when diagnosing performance issues
+    and fit the *absolutely minimal overhead* pattern by directly talking to the
+    CPU.
+
 
 ## Terms of usage
 
 This Julia package *CpuId* is published as open source and licensed under the
-MIT "Expat" License.  See accompanying file ['LICENSE.md'](./LICENSE.md) for
-details.
+[MIT "Expat" License](./LICENSE.md).
 
 
 **Contributions welcome!**

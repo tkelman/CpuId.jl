@@ -34,6 +34,9 @@ using Base.Test
     @test isa( cpu_max_frequency()    , Integer )
     @test isa( cpuinfo()              , Base.Markdown.MD )
 
+    @test isa( cpucycle()             , UInt64 )
+    @test isa( cpucycle_id()          , Tuple{UInt64,UInt64} )
+
     println(cpuinfo())
 
 end
