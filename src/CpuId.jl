@@ -12,6 +12,8 @@ export cpuvendor, cpubrand, cpumodel, cachesize, cachelinesize,
        cpucycle, cpucycle_id, cpuinfo, cpufeature, cpufeatures,
        cpufeaturedesc, cpufeaturetable, cpuarchitecture
 
+using Base.Markdown: MD
+
 
 """
     cpuid(eax, ebx, ecx, edx)
@@ -57,6 +59,25 @@ using Base: llvmcall
     # llvmcall requires actual types, rather than the usual (...) tuple
     , NTuple{4,UInt32}, Tuple{NTuple{4,UInt32}}
     , exx)
+
+
+"""
+    hasleaf(leaf::UInt32) ::Bool
+
+Helper function (not exported) to test whether the CPU claims to provide the
+given leaf in a `cpuid` instruction call.
+
+Note: It appears LLVM really know its gear: If this function is inlined, and
+      just-in-time compiled, then this test is eliminated completly if the
+      executing machine does support this feature. Yeah!
+"""
+@inline function hasleaf(leaf::UInt32) ::Bool
+    eax, ebx, ecx, edx = cpuid(leaf & 0xffff_0000)
+    eax >= leaf
+end
+
+@noinline _throw_unsupported_leaf(leaf) =
+    error("This CPU does not provide information on cpuid leaf 0x$(hex(leaf, sizeof(leaf))).")
 
 
 """
@@ -122,20 +143,20 @@ function cpucycle_id end
 Obtain the CPU model information as a Dict of pairs of
 `:Stepping`, `:Model`, `:Family` and `:CpuType`.
 """
-function cpumodel()
+function cpumodel() ::Dict{Symbol, UInt8}
     #  Stepping:    0: 3
     #  Model:       4: 7
     #  Family:      8:11
     #  Processor:  12:13
     #  Ext.Model:  16:19
     #  Ext.Family: 20:27
-    eax, ebx, ecx, edx = cpuid(1)
-    Dict( :Family    => Int((eax & 0x0000_0F00 >> 8)
-                           +(eax & 0x0FF0_0000 >> (20-4)))
-        , :Model     => Int((eax & 0x0000_00F0 >> 4)
-                           +(eax & 0x000F_0000 >> (16-4)))
-        , :Stepping  =>  Int(eax & 0x0000_000F)
-        , :CpuType   =>  Int(eax & 0x0000_3000 >> 12))
+    eax, ebx, ecx, edx = cpuid(0x01)
+    Dict( :Family    => UInt8((eax & 0x0000_0F00 >> 8)
+                             +(eax & 0x0FF0_0000 >> (20-4)))
+        , :Model     => UInt8((eax & 0x0000_00F0 >> 4)
+                             +(eax & 0x000F_0000 >> (16-4)))
+        , :Stepping  =>  UInt8(eax & 0x0000_000F)
+        , :CpuType   =>  UInt8(eax & 0x0000_3000 >> 12))
 end
 
 """
@@ -145,7 +166,8 @@ Check whether the CPU reports to run a hypervisor context, that is,
 whether the current process runs in a virtual machine.
 
 A positive answer may indicate that other information reported by the CPU
-is erroneous, such as number of physical and logical cores.
+is fake, such as number of physical and logical cores.  This is because
+the hypervisor is free to decide which information to pass.
 """
 function hypervised() ::Bool
     # alternative: 0x8000_000a, eax bit 8 set if hv present.
@@ -160,7 +182,7 @@ end
 Determine the hypervisor vendor string as provided by the cpu by executing a
 `cpuid` instruction.  Note, this string has a fixed length of 12 characters.
 Use `hvvendor()` if you prefer getting a parsed Julia symbol.  If the CPU is
-not running a hypervisor, an empty string will be returned.
+not running a hypervisor, an string of undefined content will be returned.
 """
 function hvvendorstring()
     eax, ebx, ecx, edx = cpuid(0x4000_0000)
@@ -209,7 +231,9 @@ const _cpuid_vendor_id = Dict(
 """
     cpuvendor()
 
-Determine the cpu vendor as a Julia symbol.
+Determine the cpu vendor as a Julia symbol.  In case the CPU vendor
+identification is unknown `:Unknown` is returned (then also consider raising
+an issue on Github).
 """
 cpuvendor() = get(_cpuid_vendor_id, cpuvendorstring(), :Unknown)
 
@@ -217,26 +241,26 @@ cpuvendor() = get(_cpuid_vendor_id, cpuvendorstring(), :Unknown)
 """
     hvvendor()
 
-Determine the hypervisor vendor as a Julia symbol or `:Unknown` if not running
-a hypervisor.
+Determine the hypervisor vendor as a Julia symbol or `:NoHypervisor` if not
+running a hypervisor. In case the hypervisor vendor identification is unknown
+`:Unknown` is returned (then also consider raising an issue on Github).
 """
-hvvendor() = get(_cpuid_vendor_id, hvvendorstring(), :Unknown)
+hvvendor() = hypervised() ?
+                get(_cpuid_vendor_id, hvvendorstring(), :Unknown) :
+                :NoHypervisor
 
 
 """
     cpubrand()
 
 Determine the cpu brand as a string as provided by the CPU through executing
-the `cpuid` instruction.
+the `cpuid` instruction.  This function throws if no CPU grand information is
+available form the CPU.
 """
-function cpubrand()
+function cpubrand() ::String
 
-    @noinline _throw_unsupported_leaf(leaf) =
-            error("This cpu does not provide information on leaf $(leaf).")
-
-    # Check availability of cpu brand information feature
-    eax, ebx, ecx, edx = cpuid(0x8000_0000)
-    eax < 0x8000_0004 && _throw_unsupported_leaf(0x8000_0004)
+    leaf = 0x8000_0004
+    hasleaf(leaf) || _throw_unsupported_leaf(leaf)
 
     # Extract the information from leaf 0x8000_0002..0x8000_0004
     s = ""
@@ -250,20 +274,64 @@ end
 
 
 """
+    cpuarchitecture()
+
+This function tries to infer the CPU microarchitecture with a call to the
+`cpuid` instruction.  For now, only Intel CPUs are suppored according to the
+following table.  Others are identified as `:Unknown`.
+
+Table C-1 of Intel's Optimization Reference Manual:
+
+| Family_Model                     | Microarchitecture   |
+| :------------------------------- | :------------------ |
+| 06_4EH, 06_5EH                   | Skylake             |
+| 06_3DH, 06_47H, 06_56H           | Broadwell           |
+| 06_3CH, 06_45H, 06_46H, 06_3FH   | Haswell             |
+| 06_3AH, 06_3EH                   | Ivy Bridge          |
+| 06_2AH, 06_2DH                   | Sandy Bridge        |
+| 06_25H, 06_2CH, 06_2FH           | Westmere            |
+| 06_1AH, 06_1EH, 06_1FH, 06_2EH   | Nehalem             |
+| 06_17H, 06_1DH                   | Enhanced Intel Core |
+| 06_0FH                           | Intel Core          |
+"""
+function cpuarchitecture() ::Symbol
+
+    # See also the C++ library VC++ which has quite good detection.
+    # https://github.com/VcDevel/Vc/blob/master/cmake/OptimizeForArchitecture.cmake
+    #
+    # See also Table 35-1 in Intel's Architectures Software Developer Manual.
+
+    cpumod = cpumodel()
+    cpumod[:Family] != 0x06 && return :Unknown
+
+    # Xeon Phi family 0x07, model 0x01
+
+    model = cpumod[:Model]
+    (model == 0x4e || model == 0x5e) ? :Skylake :
+    (model == 0x3d || model == 0x47 || model == 0x56) ? :Broadwell :
+    (model == 0x3c || model == 0x45 || model == 0x46 || model == 0x3f) ?  :Haswell :
+    (model == 0x3a || model == 0x3e) ? :IvyBridge :
+    (model == 0x2a || model == 0x2d) ? :SandyBridge :
+    (model == 0x25 || model == 0x2c || model == 0x2f) ? :Westmere :
+    (model == 0x1a || model == 0x1e || model == 0x1f || model == 0x2e) ?  :Nehalem :
+    (model == 0x17 || model == 0x1d) ?  :EnhancedIntelCore :
+    (model == 0x0f || model == 0x1d) ?  :IntelCore : :UnknownIntel
+end
+
+
+"""
     cachelinesize()
 
-Query the CPU about the L1 data cache line size in bytes.
-This is typically 64 byte.
+Query the CPU about the L1 data cache line size in bytes.  This is typically
+64 byte.  Returns zero if cache line size information is not available from
+the CPU.
 """
-function cachelinesize()
+function cachelinesize() ::Int
 
-    @noinline _throw_cachelinesize_error() =
-            error("This CPU doesn't support cache line size information.")
+    leaf = 0x8000_0006
+    hasleaf(leaf) || return 0
 
-    eax, ebx, ecx, edx = cpuid(0x8000_0000)
-    eax < 0x8000_0006 && _throw_cachelinesize_error()
-
-    eax, ebx, ecx, edx = cpuid(0x8000_0006)
+    eax, ebx, ecx, edx = cpuid(leaf)
     (ecx & 0xff) % Int
 end
 
@@ -275,12 +343,14 @@ Query the CPU on the maximum supported SIMD vector size in bytes, or
 `sizeof(Int)` if no SIMD capability is reported by the invoked `cpuid`
 instruction.
 """
-@inline function simdbytes()
+@inline function simdbytes() ::Int
 
-    eax, ebx, ecx, edx = cpuid(0x07)
-    simd = ebx & (1<<16) != 0 ? 512 ÷ 8 :     # AVX512F instruction set
-           ebx & (1<< 5) != 0 ? 256 ÷ 8 : 0   # AVX2
-    simd != 0 && return simd
+    if hasleaf(0x0000_0007)
+        eax, ebx, ecx, edx = cpuid(0x07)
+        simd = ebx & (1<<16) != 0 ? 512 ÷ 8 :  # AVX512F instruction set
+               ebx & (1<< 5) != 0 ? 256 ÷ 8 : 0   # AVX2
+        simd != 0 && return simd
+    end
 
     eax, ebx, ecx, edx = cpuid(0x01)
     simd = ecx & (1<<28) != 0 ? 256 ÷ 8 :     # AVX
@@ -312,7 +382,11 @@ used in a pointer for tagging;  viz. `sizeof(Int) - address_size() ÷ 8`,
 which gives on most 64 bit Intel machines 2 bytes = 16 bit for other purposes.
 """
 function address_size() ::Int
-    eax, ebx, ecx, edx = cpuid(0x8000_0008)
+
+    leaf = 0x8000_0008
+    hasleaf(leaf) || _throw_unsupported_leaf(leaf)
+
+    eax, ebx, ecx, edx = cpuid(leaf)
     (eax & 0xff00) >> 8
 end
 
@@ -326,7 +400,11 @@ for practical purposes; use this only for diagnostic issues, such as
 determining the theoretical maximum memory size.
 """
 function physical_address_size() ::Int
-    eax, ebx, ecx, edx = cpuid(0x8000_0008)
+
+    leaf = 0x8000_0008
+    hasleaf(leaf) || _throw_unsupported_leaf(leaf)
+
+    eax, ebx, ecx, edx = cpuid(leaf)
     eax & 0xff
 end
 
@@ -343,12 +421,8 @@ To print the cache levels in kbyte, use e.g. `CpuId.cachesize() .÷ 1024`.
 """
 function cachesize()
 
-    @noinline _throw_unsupported_leaf(leaf) =
-            error("This cpu does not provide information on leaf $(leaf).")
-
-    # Do we have a leaf 4?
-    eax, ebx, ecx, edx = cpuid(0x00)
-    eax < 0x04 && _throw_unsupported_leaf(0x04)
+    leaf = 0x0000_0004
+    hasleaf(leaf) || _throw_unsupported_leaf(leaf)
 
     # Cache size information on leaf 0x04 is computed with
     #  size in bytes = (ways+1) * (partitions+1) * (linesize+1) * (sets+1)
@@ -385,25 +459,34 @@ Determine whether the CPU provides clock frequency information.  If true, then
 be expected to return sensible information.
 """
 function has_cpu_frequencies() ::Bool
-    eax, ebx, ecx, edx = cpuid(0x00)
-    eax >= 0x16
+
+    leaf = 0x0000_0016
+    hasleaf(leaf)
+
+    # frequencies are provided if any of the bits in question are non-zero
+    eax, ebx, ecx = cpuid(leaf)
+    (eax & 0xffff) != zero(UInt32) ||
+    (ebx & 0xffff) != zero(UInt32) ||
+    (ecx & 0xffff) != zero(UInt32)
 end
 
 
 """
     cpu_base_frequency()
 
-Determine the CPU base frequency in MHz as reported directly from the CPU
-through a `cpuid` instruction call.  The actual cpu frequency might be lower
-due to throttling, or higher due to frequency boosting.
+Determine the CPU nominal base frequency in MHz as reported directly from the
+CPU through a `cpuid` instruction call.  Returns zero if the CPU doesn't
+provide base frequency information.
+
+The actual cpu frequency might be lower due to throttling, or higher due to
+frequency boosting (see `cpu_max_frequency`).
 """
 function cpu_base_frequency() ::Int
 
-    # Do we have a leaf 16?
-    eax, ebx, ecx, edx = cpuid(0x00)
-    eax < 0x16 && return -1
+    leaf = 0x0000_0016
+    hasleaf(leaf) || return 0
 
-    eax, ebx, ecx, edx = cpuid(0x16)
+    eax, ebx, ecx, edx = cpuid(leaf)
     eax & 0xffff
 end
 
@@ -412,16 +495,16 @@ end
     cpu_max_frequency()
 
 Determine the maximum CPU frequency in MHz as reported directly from the CPU
-through a `cpuid` instrauction call.  Returns minus one if the CPU doesn't
-support this query.
+through a `cpuid` instrauction call.  The maximum frequency typically refers
+to the CPU's boost frequency.  Returns zero if the CPU doesn't provide maximum
+frequency information.
 """
 function cpu_max_frequency() ::Int
 
-    # Do we have a leaf 16?
-    eax, ebx, ecx, edx = cpuid(0x00)
-    eax < 0x16 && return -1
+    leaf = 0x0000_0016
+    hasleaf(leaf) || return 0
 
-    eax, ebx, ecx, edx = cpuid(0x16)
+    eax, ebx, ecx, edx = cpuid(leaf)
     ebx & 0xffff
 end
 
@@ -430,19 +513,18 @@ end
     cpu_bus_frequency()
 
 Determine the bus CPU frequency in MHz as reported directly from the CPU through
-a `cpuid` instrauction call.
+a `cpuid` instrauction call.  Returns zero if the CPU doesn't
+provide bus frequency information.
 """
 function cpu_bus_frequency() ::Int
 
-    # Do we have a leaf 16?
-    eax, ebx, ecx, edx = cpuid(0x00)
-    eax < 0x16 && return -1
+    leaf = 0x0000_0016
+    hasleaf(leaf) || return 0
 
-    eax, ebx, ecx, edx = cpuid(0x16)
+    eax, ebx, ecx, edx = cpuid(leaf)
     ecx & 0xffff
 end
 
-using Base.Markdown: MD, @md_str
 
 """
     cpuinfo()
@@ -464,56 +546,14 @@ function cpuinfo()
 | Data cache   | level $(1:length(CpuId.cachesize())) : $(map(x->div(x,1024), CpuId.cachesize())) kbytes |
 |              | $(CpuId.cachelinesize()) byte cache line size      | """ *
     ( has_cpu_frequencies() ?
-"\n| Clock Freq.  | $(CpuId.cpu_base_frequency()) / $(CpuId.cpu_max_frequency()) MHz (base/max) |
+"\n| Clock Freq.  | $(CpuId.cpu_base_frequency()) / $(CpuId.cpu_max_frequency()) MHz (base/max frequency) |
 |              | $(CpuId.cpu_bus_frequency()) MHz bus frequency     | " : "") *
-"\n| TSC       | Priviledged access to time stamp counter: " * (cpufeature(:RDTSCP) ? " Yes " : " No ")* " |" *
+"\n| TSC       | Priviledged access to Time Stamp Counter: " * (cpufeature(:RDTSCP) ? " Yes " : " No ")* " |" *
 "\n| Hypervisor     |" * (CpuId.hypervised() ?  " Yes, $(CpuId.hvvendor()) " : " No ") * " |")
 end
 
-# CPU feature detection
+
 include("cpufeature.jl")
-
-"""
-    cpuarchitecture()
-
-This function tries to infer the CPU microarchitecture with a call to the
-`cpuid` instruction.  For now, only Intel CPUs are suppored according to the
-following table.
-
-The following table is taken from []():
-Table C-1. CPUID Signature Values of Of Recent Intel Microarchitectures
-
-| Family_Model                     | Microarchitecture   |
-| :------------------------------- | :------------------ |
-| 06_4EH, 06_5EH                   | Skylake             |
-| 06_3DH, 06_47H, 06_56H           | Broadwell           |
-| 06_3CH, 06_45H, 06_46H, 06_3FH   | Haswell             |
-| 06_3AH, 06_3EH                   | Ivy Bridge          |
-| 06_2AH, 06_2DH                   | Sandy Bridge        |
-| 06_25H, 06_2CH, 06_2FH           | Westmere            |
-| 06_1AH, 06_1EH, 06_1FH, 06_2EH   | Nehalem             |
-| 06_17H, 06_1DH                   | Enhanced Intel Core |
-| 06_0FH                           | Intel Core          |
-
-See also Table 35-1 in Intels developer manual.
-"""
-function cpuarchitecture() ::Symbol
-    cpumod = cpumodel()
-    cpumod[:Family] != 0x06 && return :UnknownNonIntel
-
-    # Xeon Phi family 0x07, model 0x01
-
-    model = cpumod[:Model]
-    (model == 0x4e || model == 0x5e) ? :Skylake :
-    (model == 0x3d || model == 0x47 || model == 0x56) ? :Broadwell :
-    (model == 0x3c || model == 0x45 || model == 0x46 || model == 0x3f) ?  :Haswell :
-    (model == 0x3a || model == 0x3e) ? :IvyBridge :
-    (model == 0x2a || model == 0x2d) ? :SandyBridge :
-    (model == 0x25 || model == 0x2c || model == 0x2f) ? :Westmere :
-    (model == 0x1a || model == 0x1e || model == 0x1f || model == 0x2e) ?  :Nehalem :
-    (model == 0x17 || model == 0x1d) ?  :EnhancedIntelCore :
-    (model == 0x0f || model == 0x1d) ?  :IntelCore : :UnknownIntel
-end
 
 """
 Enables and disables a few functions depending on whether the features are

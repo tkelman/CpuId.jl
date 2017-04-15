@@ -1,13 +1,13 @@
 # *CpuId* — Ask your CPU what it can do for you.
 
-_Status: Experimental._
+_Status: Experimental, mostly functional._
 
 [![Build Status](https://travis-ci.org/m-j-w/CpuId.jl.svg?branch=master)](https://travis-ci.org/m-j-w/CpuId.jl)
 [![Build Status](https://ci.appveyor.com/api/projects/status/q34wl2a441dy87gy?svg=true)](https://ci.appveyor.com/project/m-j-w/cpuid-jl)
 [![codecov](https://codecov.io/gh/m-j-w/CpuId.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/m-j-w/CpuId.jl)
 
 Expected to work in general on Julia 0.5 and 0.6, on Linux, Mac and Windows
-with Intel compatible CPUs (which include e.g. AMD).
+with Intel compatible CPUs.
 
 
 ## Motivation
@@ -39,13 +39,14 @@ branch:
 
     Julia> Pkg.clone("https://github.com/m-j-w/CpuId.jl")
 
-The really brave may want to switch to the *experimental* branch where
-development takes place.
+The truly brave may want to switch to the [experimental branch
+](https://github.com/m-j-w/CpuId.jl/tree/experimental) where development takes
+place.
 
 
 ## Features
 
-See the diagnostic summary by typing
+See the diagnostic summary on your CPU by typing
 
 ```
 julia> using CpuId
@@ -67,7 +68,7 @@ julia> cpuinfo()
     Hypervisor       No
 ```
 
-This release covers a selection of primarily basic functionality:
+This release covers a selection of fundamental and higher level functionality:
 
  - `cpuinfo()` generates the summary shown above (markdown string).
  - `cpubrand()`, `cpumodel()`, `cpuvendor()` allow the identification of the
@@ -115,6 +116,35 @@ julia> cpufeaturetable()
     ...
 ```
 
+## Some *cpuid* background
+
+...
+
+A particular cool thing is the combination of Julia's JIT compilation together
+with the *cpuid* instruction.  Since *cpuid* is such a frequently required
+instruction, LLVM really understands what you're doing, and, since
+JIT-compiling, completely eliminates those calls. After all, LLVM already knows
+the answer based on what machine it is compiling for.  This is true for example
+for all the `hasleaf` calls that are called from within another function and
+inlined. See for yourself:
+
+```jl
+julia> fn() = CpuId.hasleaf(0x00000000)
+fn (generic function with 1 method)
+
+julia> fn()
+true
+
+julia> @code_native fn()
+    pushq   %rbp
+    movq    %rsp, %rbp
+    movb    $1, %al        # <== this is a constant 'true'
+    popq    %rbp
+    retq
+    nopl    (%rax,%rax)
+```
+
+Hence, **runtime safety at negative cost overhead!**.
 
 ## Limitations
 
