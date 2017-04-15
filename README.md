@@ -20,6 +20,8 @@ machine (hypervisor), or to determine the size of the largest SIMD registers
 available.  This information is obtained by directly querying the CPU through
 the `cpuid` assembly instruction.  A comprehensive overview of the `cpuid`
 instruction is found at [sandpile.org](http://www.sandpile.org/x86/cpuid.htm).
+The full documentation is found in Intels 4670 page [developer manual](
+http://www.intel.com/content/www/us/en/architecture-and-technology/64-ia-32-architectures-software-developer-manual-325462.html).
 
 Same information may of course be collected from various sources from Julia
 itself or from the operating system, e.g. on Linux from `/proc/cpuinfo`.
@@ -63,7 +65,6 @@ julia> cpuinfo()
                      100 MHz bus frequency
     TSC              Priviledged access to time stamp counter: Yes
     Hypervisor       No
-    Hyperthreading   Yes
 ```
 
 This release covers a selection of primarily basic functionality:
@@ -88,8 +89,6 @@ This release covers a selection of primarily basic functionality:
  - `hypervised()` returns true when the CPU indicates that a hypervisor is
      running the operating system, aka a virtual machine.  In that case,
      `hvvendor()` may be invoked to get the, well, hypervisor vendor.
- - `hyperthreading()` checks whether there _might_ be more logical than physical
-     cores available.
  - `simdbits()` and `simdbytes()` return the size of the largest SIMD register
      available on the executing CPU.
  - `cpufeature(::Symbol)` permits asking for the availability of a specific

@@ -13,6 +13,9 @@ using Base.Test
         println("0x", hex(r), " : ", CpuId.cpuid(r))
     end
 
+    println("Legacy cache 0x02 information:")
+    println("0x00000002 : ", CpuId.cpuid(0x02))
+
     # Can't do real testing on results when target machine is unknown.
     # Thus, let's simply check whether the result types are correct,
     # which also fails if a test throws.
@@ -37,7 +40,6 @@ using Base.Test
     @test isa( cpubrand()             , String )
     @test isa( cpumodel()             , Dict )
     @test isa( cpuvendor()            , Symbol )
-    @test isa( hyperthreading()       , Bool )
     @test isa( hypervised()           , Bool )
     @test isa( physical_address_size(), Integer )
     @test isa( simdbits()             , Integer )

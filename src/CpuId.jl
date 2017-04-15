@@ -8,7 +8,7 @@ module CpuId
 export cpuvendor, cpubrand, cpumodel, cachesize, cachelinesize,
        simdbytes, simdbits, address_size, physical_address_size,
        cpu_base_frequency, cpu_max_frequency, cpu_bus_frequency,
-       has_cpu_frequencies, hyperthreading, hypervised, hvvendor,
+       has_cpu_frequencies, hypervised, hvvendor,
        cpucycle, cpucycle_id, cpuinfo, cpufeature, cpufeatures,
        cpufeaturedesc, cpufeaturetable, cpuarchitecture
 
@@ -137,33 +137,6 @@ function cpumodel()
         , :Stepping  =>  Int(eax & 0x0000_000F)
         , :CpuType   =>  Int(eax & 0x0000_3000 >> 12))
 end
-
-"""
-    hyperthreading()
-
-Check whether the CPU reports to be hyperthreading-capable. Hyperthreading
-means that two logical cores are assigned to each physical core and share the
-same physical hardware.  However, a positive or negative answer does not
-necessarily point towards hyperthreading actually being enabled or disabled.
-
-If the code runs in a hypervisor, this function should not be trusted if it
-does not give a positive answer since the hypervisor is free to choose what to
-report.  Also, if the CPU is hyperthreading-capable, hyperthreading might
-still be turned off via the operating system.  Finally, some CPUs, such as my
-Xeon, report being hyperthreading-capable, but are not according to specs.
-
-Tip: In case this function returns true, or a call to `hypervised()` returns
-true, one should assume hyperthreading to be active, unless disproven
-otherwise.  Hence, `if hypervised() || hyperthreading()` then better occupy
-only half the reported cores to avoid bad surprises.  On the other hand, if
-neither a hypervisor is detected, nor hyperthreading, then there is most
-likely no hyperthreading.
-"""
-function hyperthreading() ::Bool
-    eax, ebx, ecx, edx = cpuid(0x01)
-    ((edx >> 28) & one(UInt32)) != zero(UInt32)
-end
-
 
 """
     hypervised()
@@ -494,8 +467,7 @@ function cpuinfo()
 "\n| Clock Freq.  | $(CpuId.cpu_base_frequency()) / $(CpuId.cpu_max_frequency()) MHz (base/max) |
 |              | $(CpuId.cpu_bus_frequency()) MHz bus frequency     | " : "") *
 "\n| TSC       | Priviledged access to time stamp counter: " * (cpufeature(:RDTSCP) ? " Yes " : " No ")* " |" *
-"\n| Hypervisor     |" * (CpuId.hypervised() ?  " Yes, $(CpuId.hvvendor()) " : " No ") * " |" *
-"\n| Hyperthreading |" * (CpuId.hyperthreading() ?  " Yes" : " No ") * " |")
+"\n| Hypervisor     |" * (CpuId.hypervised() ?  " Yes, $(CpuId.hvvendor()) " : " No ") * " |")
 end
 
 # CPU feature detection
@@ -523,11 +495,13 @@ Table C-1. CPUID Signature Values of Of Recent Intel Microarchitectures
 | 06_17H, 06_1DH                   | Enhanced Intel Core |
 | 06_0FH                           | Intel Core          |
 
-Xeon Phi: Family is possibly 0x0b ?
+See also Table 35-1 in Intels developer manual.
 """
 function cpuarchitecture() ::Symbol
     cpumod = cpumodel()
-    cpumod[:Family] != 0x06 && return :UnknownNonIntel  # Intel's family is all 0x06's
+    cpumod[:Family] != 0x06 && return :UnknownNonIntel
+
+    # Xeon Phi family 0x07, model 0x01
 
     model = cpumod[:Model]
     (model == 0x4e || model == 0x5e) ? :Skylake :
